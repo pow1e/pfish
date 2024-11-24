@@ -1,0 +1,45 @@
+version: "3.9"
+services:
+  app:
+    build: .
+    container_name: fish_app
+    ports:
+      - "50001:50001"  # gRPC 服务端口
+      - "50002:50002"  # Web 服务端口
+    depends_on:
+      mysql:
+        condition: service_healthy  # 仅在 MySQL 服务健康时启动
+    volumes:
+      - ./static:/app/static      # 静态文件挂载
+    environment:
+      CONFIG_PATH: "/app/config.yaml"  # 配置文件路径
+    networks:
+      - fish_network
+
+  mysql:
+    image: mysql:8.0
+    container_name: fish_mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: fish
+    ports:
+      - "3306:3306"  # 数据库端口
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - fish_network
+    healthcheck:  # 添加健康检查配置
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p123456"]
+      interval: 10s       # 每10秒检查一次
+      timeout: 5s         # 超过5秒视为失败
+      retries: 3          # 连续3次失败视为健康检查未通过
+      start_period: 30s   # 给 MySQL 初始化时间
+
+networks:
+  fish_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+
