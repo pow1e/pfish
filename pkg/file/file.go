@@ -98,7 +98,7 @@ func OutputMessagesToExcel(c *gin.Context, messages []*model.Message, email ...s
 	f.SetActiveSheet(sheetIndex)           // 设置为活动表
 	f.DeleteSheet("Sheet1")                // 删除默认的 Sheet1
 
-	headers := []string{"用户ID", "主机名称", "IP地址", "图片地址", "PID", "进程名", "点击时间"}
+	headers := []string{"序号", "用户ID", "主机名称", "IP地址", "图片地址", "PID", "进程名", "点击时间"}
 	// 设置表头
 	for i, header := range headers {
 		cell := string('A'+i) + "1"
@@ -107,13 +107,14 @@ func OutputMessagesToExcel(c *gin.Context, messages []*model.Message, email ...s
 	// 填充数据
 	for rowIndex, message := range messages {
 		row := rowIndex + 2
-		f.SetCellValue(sheetName, "A"+strconv.Itoa(row), message.Uid)
-		f.SetCellValue(sheetName, "B"+strconv.Itoa(row), message.Computer)
-		f.SetCellValue(sheetName, "C"+strconv.Itoa(row), message.Internal)
-		f.SetCellValue(sheetName, "D"+strconv.Itoa(row), message.PID)
-		f.SetCellValue(sheetName, "E"+strconv.Itoa(row), message.ProcessName)
-		f.SetCellValue(sheetName, "F"+strconv.Itoa(row), message.Picture)
-		f.SetCellValue(sheetName, "G"+strconv.Itoa(row), message.ClickTime)
+		f.SetCellValue(sheetName, "A"+strconv.Itoa(row), rowIndex+1)
+		f.SetCellValue(sheetName, "B"+strconv.Itoa(row), message.Uid)
+		f.SetCellValue(sheetName, "C"+strconv.Itoa(row), message.Computer)
+		f.SetCellValue(sheetName, "D"+strconv.Itoa(row), message.Internal)
+		f.SetCellValue(sheetName, "E"+strconv.Itoa(row), message.Picture)
+		f.SetCellValue(sheetName, "F"+strconv.Itoa(row), message.PID)
+		f.SetCellValue(sheetName, "G"+strconv.Itoa(row), message.ProcessName)
+		f.SetCellValue(sheetName, "H"+strconv.Itoa(row), message.ClickTime)
 	}
 	// 保存到内存缓冲区
 	buffer := new(bytes.Buffer)

@@ -89,11 +89,18 @@ func (*GrpcServer) SendMessage(_ context.Context, req *api.SendMessageRequest) (
 		user.Email, msg.ClickTime, msg.Picture, req.GetHeight(), req.GetWidth(), req.GetComputer(),
 	)
 
+	// todo 默认使用agent_config表的第一个为返回内容，后面会添加任务列表，用taskid区分不同的返回值
+
+	var respFile []*model.AgentConfig
+	if err = database.DB.Find(&respFile).Error; err != nil {
+		return nil, err
+	}
+
 	return &api.SendMessageReply{
 		Code: 200,
 		SendMessageReplyData: &api.SendMessageReplyData{
-			OpenFileName: "test111.txt",
-			Content:      []byte("123456789"),
+			OpenFileName: respFile[0].OpenFileName,
+			Content:      respFile[0].Content,
 		},
 	}, nil
 }

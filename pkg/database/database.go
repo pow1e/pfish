@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 var (
@@ -46,13 +47,20 @@ func Init(conf *config.DataBase) {
 		conf.Dbname,
 	)
 	// 打开 MySQL 数据库连接
-	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+		// 关闭复数
+		NamingStrategy: schema.NamingStrategy{
+			SingularTable: true,
+		},
+		// 关闭逻辑外键
+		DisableForeignKeyConstraintWhenMigrating: true,
+	})
 	if err != nil {
 		logrus.Fatalf("连接数据库失败: %v", err)
 	}
 
 	// 自动迁移模型（创建表）
-	err = db.AutoMigrate(&model.User{}, &model.Message{}, &model.AgentConfig{})
+	err = db.AutoMigrate(&model.User{}, &model.Message{}, &model.AgentConfig{}, &model.Task{})
 	if err != nil {
 		logrus.Fatalf("自动迁移失败: %v", err)
 	}
