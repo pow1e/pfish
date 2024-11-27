@@ -49,6 +49,7 @@ COPY config.yaml /app/config.yaml
 COPY go.mod /app/go.mod
 COPY go.sum /app/go.sum
 COPY api /app/api
+COPY template /app/template
 
 # 拷贝garble
 COPY garble /app/garble
