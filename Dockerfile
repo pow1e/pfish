@@ -31,7 +31,7 @@ COPY . .
 RUN cat go.mod
 
 # 构建 Go 程序，指定正确的路径
-RUN go build  -o /app/fish server.go
+RUN go build  -o /app/fish main.go
 
 # 运行时镜像仍然是 golang:alpine
 FROM golang:1.20-alpine
@@ -50,12 +50,6 @@ COPY go.mod /app/go.mod
 COPY go.sum /app/go.sum
 COPY api /app/api
 COPY template /app/template
-
-# 拷贝garble
-COPY garble /app/garble
-
-RUN chmod +x /app/garble
-
 
 # 设置工作目录
 WORKDIR /app
