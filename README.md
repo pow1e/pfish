@@ -85,7 +85,7 @@ smtp:
 
 3.2 程序生成木马：
 
-如果使用生成木马的话，请使用`/{baseurl}/gen`接口，接受json结构体。
+如果使用生成木马的话，请使用`/{baseurl}/gen`接口，接收json结构体。
 
 其中rebuild表示是否重新编译，如果为true，则会调用`go build agent.go`编译，
 rebuild为true则会根据`template/agent.exe`对该二进制木马禁止修改，不会重新编译。
